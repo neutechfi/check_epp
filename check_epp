@@ -1,0 +1,69 @@
+#!/usr/bin/env php
+<?php
+/*
+ * Simple nagios check script that checks that EPP connection can login and
+ * retrieve domain info
+ */
+
+define('STATE_OK', 0);
+define('STATE_WARNING', 1);
+define('STATE_CRITICAL', 2);
+define('STATE_UNKNOWN', 3);
+
+require('php-epp-client/autoloader.php');
+
+use Metaregistrar\EPP\eppConnection;
+use Metaregistrar\EPP\eppException;
+use Metaregistrar\EPP\eppDomain;
+use Metaregistrar\EPP\eppInfoDomainRequest;
+use Metaregistrar\EPP\eppContactHandle;
+use Metaregistrar\EPP\eppHost;
+
+
+
+
+if ($argc <= 2) {
+    echo "Usage: check_epp <env> <domainname>\n";
+    echo "Please provide epp env and a domain name retrieve\n\n";
+    die();
+}
+
+$eppenv     = $argv[1];
+$domainname = $argv[2];
+
+try {
+    if ($conn = eppConnection::create($eppenv, false)) {
+        // Connect to the EPP server
+        if ($conn->login()) {
+            infodomain($conn, $domainname);
+            $conn->logout();
+        }
+    }
+} catch (eppException $e) {
+    echo "Login failed: " . $e->getMessage() . "\n";
+    exit(STATE_CRITICAL);
+}
+
+function infodomain($conn, $domainname) {
+    try {
+        $info = new eppInfoDomainRequest(new eppDomain($domainname), 'all');
+        if ($response = $conn->request($info)) {
+            $d = $response->getDomain();
+            if($d->getDomainname() == $domainname && strlen($d->getRegistrant()) > 3) {            
+		echo "OK\n";
+		exit(STATE_OK);
+            } else {
+		echo $domainname . " info was not found\n";
+		exit(STATE_CRITICAL);
+            }
+        } else {
+            echo "eppInfoDomainRequest failed\n";
+            exit(STATE_CRITICAL);
+        }
+    } catch (eppException $e) {
+        echo $e->getMessage() . "\n";
+        exit(STATE_CRITICAL);
+    }
+    
+    exit(STATE_UNKNOWN);
+}
